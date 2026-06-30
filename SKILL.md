@@ -352,12 +352,34 @@ KRITERIA:
 
 **Setelah selesai:** Gabungkan Bab 1 + Bab 2 → kompilasi ulang PDF.
 
-### Step 9: Compile Final PDF (Bab 1 + Bab 2)
+### Step 9: Compile Final PDF (Bab 1 + Bab 2 + Bab 3)
 
 ```
-files = ["bab_1_pendahuluan.md"] + bab2_files
+files = ["bab_1_pendahuluan.md"] + bab2_files + ["bab_3_kesimpulan.md"]
 # Combine, remove --- separators, convert to PDF
 ```
+
+### Step 10: Generate Bab 3 (Kesimpulan) — 3 Paragraf Compact
+
+Setelah Bab 1 dan Bab 2 selesai, generate Bab 3 sebagai kesimpulan yang merangkum argumen utama.
+
+**Struktur 3 Paragraf (tanpa sub-judul):**
+
+Setiap paragraf secara implisit mewakili satu pilar, tanpa menyebut 'pertama', 'kedua', atau 'ketiga':
+
+| Paragraf | Pilar implisit | Isi |
+|----------|---------------|-----|
+| 1 | **Strategi substitusi sekuensial** | Dekonstruksi 4 pillars, reposisi beta-blocker, hidralazin-ISDN, fase pra-konsepsi hingga laktasi |
+| 2 | **Kesenjangan bukti** | Eksklusi RCT, MRA/SGLT2i tanpa data manusia, bromokriptin dilemma, shared decision-making |
+| 3 | **Sintesis dan arah ke depan** | Reintroduksi bertahap GDMT postpartum, terapi adjuvan, MCS bridge-to-recovery, registri prospektif |
+
+**Aturan penulisan:**
+- Tepat 3 paragraf, jangan lebih
+- 300-450 kata total — ringkas dan padat
+- TANPA sub-judul, TANPA bullet, TANPA bold, TANPA AI klise
+- TANPA sitasi baru — kesimpulan tidak perlu sitasi
+- Gaya formal konklusif
+- Transisi alami antar paragraf tanpa penanda eksplisit
 
 ## Referensi Terkait
 
