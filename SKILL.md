@@ -1,12 +1,16 @@
 ---
 name: academic-draft-generator
-version: 1.0.0
+version: 1.1.0
 description: |-
   Generate academic literature review drafts (Bahasa Indonesia) from
   PaperQA/HyDE research Q&A CSV data. Mapping pertanyaan ke outline,
   parallel section generation via sub-agents with strict anti-AI style,
-  kompilasi ke PDF via weasyprint.
-tags: [academic, literature-review, draft-generation, bahasa-indonesia, paperqa]
+  post-processing polish via paper-humanizer-id, kompilasi ke PDF via
+  weasyprint.
+tags: [academic, literature-review, draft-generation, bahasa-indonesia, paperqa, anti-ai]
+related_skills:
+  - paper-humanizer-id
+  - humanize-writing
 ---
 
 # Academic Draft Generator: Pipeline Telaah Pustaka dari Research Q&A ke PDF
@@ -19,6 +23,22 @@ Gunakan ketika user memiliki:
 3. **Prompt template** — aturan Academic Draft Helper (gaya anti-AI, format prosa)
 
 Dan user meminta output berupa **draft lengkap dalam Bahasa Indonesia** sebagai PDF.
+
+## Integrasi Skill Terkait
+
+Pipeline ini mengintegrasikan dua skill anti-AI yang saling melengkapi:
+
+| Skill | Peran | Bahasa | Sumber |
+|-------|-------|--------|--------|
+| paper-humanizer-id | Post-processing — polish final draft, hapus AI patterns Indonesia | Indonesia | kustom |
+| humanize-writing | Style rules baseline — detection heuristics, tier-1/tier-2 vocabulary, 8-pass editing framework | Inggris/adaptatif | jpeggdev/humanize-writing |
+
+### Cara Integrasi
+
+1. Pre-flight: skill_view("paper-humanizer-id") dan skill_view("humanize-writing") di awal sesi untuk memuat aturan gaya.
+2. Style rules sub-agent: ambil larangan leksikal dari kedua skill dan gabungkan ke setiap goal sub-agent (lihat Step 3 Extended AI Vocabulary).
+3. Post-processing: setelah semua seksi terkumpul dan sebelum kompilasi PDF, jalankan polish pass dengan paper-humanizer-id (Step 6b).
+4. Detection heuristic: gunakan adapted checklist dari humanize-writing untuk QA akhir draft.
 
 ## Workflow Ringkas
 
@@ -81,6 +101,42 @@ Embed aturan ini di setiap goal sub-agent:
 - Heading: sentence case ("Definisi peripartum cardiomyopathy")
 - 1 deskriptor kuat per konsep (patahkan "rule of three")
 
+### Extended AI Vocabulary (Gabungan humanize-writing + paper-humanizer-id)
+
+Selain larangan di atas, gabungkan vocabulary dari kedua skill terkait:
+
+**Tier 1 — Red flag (HINDARI):**
+- Inggris: delve, landscape (metafora), tapestry, paradigm shift, leverage, harness, navigate (metafora), realm, embark on journey, myriad, plethora, multifaceted, groundbreaking, revolutionize, synergy, ecosystem (non-teknis), resonate, streamline
+- Indonesia: menyelami, mengupas, membedah, menonjolkan, menggarisbawahi, memupuk, lanskap, permadani, fondasi utama, bukti nyata, panggung utama
+
+**Tier 2 — Suspicious dalam cluster (3+ dalam satu tulisan):**
+- Inggris: robust, seamless, cutting-edge, innovative, comprehensive, pivotal, nuanced, compelling, transformative, bolster, underscore, evolving, fostering, imperative, intricate, overarching, unprecedented
+- Indonesia: dalam rangka meningkatkan, tidak terlepas dari, guna mencapai, sebagaimana mestinya, pada hakikatnya, oleh karena itu maka
+
+**Frasa pengisi (fluff) — English:** serves as, stands as, represents (berlebihan), boasts, features, offers (kopula), it is worth noting, it is important to note, due to the fact that, at this point in time, in order to
+
+**Frasa pengisi (fluff) — Indonesia:** perlu diperhatikan bahwa, pada dasarnya, dapat dikatakan bahwa, berfungsi sebagai pengingat, memainkan peran penting, menyoroti pentingnya, menjadi tonggak sejarah
+
+**Kata sifat hiperbolik:** sangat signifikan, sangat penting, sangat besar, luar biasa, sangat krusial, revolusioner, tak ternilai
+
+### Detection Heuristic (Adapted from humanize-writing)
+
+Setelah draft selesai, skoring untuk deteksi AI residual. Jika 5+ dari checklist ini terdeteksi, jalankan post-processing:
+
+- [ ] Mengandung 3+ kata Tier 1 (Inggris atau Indonesia)
+- [ ] Mengandung 5+ kata Tier 2
+- [ ] Ada frasa pengisi filler ("perlu diperhatikan bahwa", "penting untuk dicatat")
+- [ ] Setiap seksi mengikuti struktur paragraf yang identik
+- [ ] Paralelisme negatif muncul lebih dari 1x
+- [ ] Em dash muncul lebih dari 1x per 3 paragraf
+- [ ] Tidak ada kalimat pendek (under 10 kata)
+- [ ] Tidak ada variasi panjang kalimat
+- [ ] Kesimpulan formulaik ("Kesimpulannya", "Secara keseluruhan")
+- [ ] Kopula avoidance ("berfungsi sebagai" bukan "adalah")
+- [ ] Klaim absolut tanpa konteks keterbatasan
+- [ ] Transisi generik berulang ("Selain itu" di awal kalimat berturut-turut)
+- [ ] Significance inflation di paragraf pembuka/penutup
+
 ### Step 4: Parallel Generation
 
 Gunakan `delegate_task(tasks=[...])` dengan max 3 concurrent tasks.
@@ -141,6 +197,27 @@ HTML(string=html).write_pdf(output_path)
 ```
 
 Pastikan `pip install weasyprint markdown` tersedia.
+
+### Step 6b: Post-processing Polish dengan paper-humanizer-id
+
+Setelah semua seksi terkumpul dalam satu file markdown (sebelum konversi ke PDF), lakukan polish pass:
+
+1. Load skill: skill_view("paper-humanizer-id") — memuat aturan PUEBI, hapus AI patterns Indonesia, perbaiki koherensi paragraf.
+2. Baca file markdown gabungan.
+3. Proses per paragraf dengan aturan paper-humanizer-id:
+   - Hapus frasa pembuka generik ("dalam era globalisasi", "tidak dapat dipungkiri")
+   - Hapus AI-speak Indonesia ("dalam rangka", "guna mencapai", "tidak terlepas dari")
+   - Perbaiki repetisi pola kalimat
+   - Kurangi generalisasi berlebihan
+   - Hapus kata sifat hiperbolik ("sangat", "luar biasa")
+   - Perbaiki pola terjemahan literal dari Inggris
+   - Pastikan PUEBI dan konsistensi istilah
+4. Jangan ubah: data, angka, sitasi, makna inti, struktur argumen.
+5. Simpan hasil polish.
+
+### Step 6c: Detection Heuristic Check
+
+Sebelum konversi ke PDF, jalankan Detection Heuristic (lihat Extended AI Vocabulary di atas). Jika 5+ item terdeteksi, ulangi Step 6b dengan target spesifik pada pola yang terdeteksi.
 
 ### Step 7: Deliver
 
