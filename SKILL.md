@@ -207,51 +207,37 @@ Setelah draft selesai, skoring untuk deteksi AI residual. Jika 5+ dari checklist
 
 Gunakan `delegate_task(tasks=[...])` dengan max 3 concurrent tasks.
 
-**Pola outline umum (template — sesuaikan dengan topik):**
+**Mapping pertanyaan Q&A ke outline user:**
 
-Pola di bawah ini adalah template generik yang bisa dipakai untuk topik ilmiah apa pun. Mapping Q → section dilakukan manual berdasarkan isi pertanyaan.
+Outline sudah disediakan oleh user (`outline.txt`). Cara mapping:
 
+1. Baca outline user — catat semua heading (2.1, 2.1.1, 2.2...)
+2. Baca CSV — baca semua pertanyaan sesuai topik
+3. Kelompokkan secara manual per section outline berdasarkan kesesuaian topik
+4. Ekstrak closed-set sitasi per grup (Step 1b)
+5. Delegasikan sub-agent per grup dengan daftar sitasi masing-masing
+
+Contoh mapping untuk referat PPCM (hanya ilustrasi):
 ```
-## 2.1 Definisi dan Klasifikasi Topik
-  ### 2.1.1 Definisi, Kriteria Diagnostik, Diagnosis Banding
-  ### 2.1.2 Epidemiologi, Klasifikasi Risiko, dan Faktor Terkait
-## 2.2 Landasan Fisiologis/Mekanistik
-  ### 2.2.1 Perubahan Fisiologis Dasar dan Implikasinya
-## 2.3 Paradigma Terapi Standar (Populasi Umum)
-## 2.4 Dekonstruksi/Tantangan pada Populasi Khusus
-  ### 2.4.1 Kontraindikasi & Konsekuensi
-  ### 2.4.2 Evidence Gaps & Trade-off
-  ### 2.4.3 Agen/Faktor yang Bertahan — Reposisi Peran
-  ### 2.4.4 Alternatif Substitusi
-## 2.5 Strategi Substitusi Sekuensial / Alur Tata Laksana
-  ### 2.5.1 Fase Pra-Intervensi / Persiapan
-  ### 2.5.2 Fase Intervensi Awal
-  ### 2.5.3 Fase Transisi & Follow-up
-  ### 2.5.4 Fase Reintroduksi / Pemulihan
-## 2.6 Navigasi Evidence Gaps
-  ### 2.6.1 Keterbatasan Bukti & Bias Studi
-  ### 2.6.2 Extrapolasi Data & Real-World Evidence
-  ### 2.6.3 Individualized Care & Shared Decision-Making
-## 2.7 Terapi/Topik Adjuvan Kritis (ringkas)
-  ### 2.7.1 Profilaksis / Pencegahan
-  ### 2.7.2 Terapi Spesifik Berdasarkan Patofisiologi
-  ### 2.7.3 Device / Dukungan Eksternal
+2.1.1 → Q1-5 (definisi, diagnosis PPCM)
+2.1.2 → Q6-9 (epidemiologi, mWHO)
+2.2.1 → Q10-14 (hemodinamik kehamilan)
+2.3 → Q15-20 (GDMT HFrEF)
+2.4.1 → Q21-24 (RAAS/ARNI kontraindikasi)
+2.4.2 → Q25-28 (MRA/SGLT2i)
+2.4.3 → Q29-32 (beta-blocker)
+2.4.4 → Q33-36 (hydralazine-ISDN)
+2.5.1 → Q37-40 (pra-konsepsi)
+2.5.2 → Q41-46 (kehamilan trimester 1-3)
+2.5.3 → Q47-52 (persalinan)
+2.5.4 → Q53-54 (laktasi)
+2.6.1 → Q68,69,73,74,77,78,79
+2.6.2 → Q70,71,72,76
+2.6.3 → Q80,81,82,83,84
+2.7.1 → Q60-63
+2.7.2 → Q55-59
+2.7.3 → Q64-67
 ```
-
-**Cara mapping Q&A ke outline:**
-1. Baca daftar pertanyaan di CSV
-2. Kelompokkan secara manual per section outline berdasarkan kesesuaian topik
-3. Ekstrak closed-set sitasi per grup
-4. Delegasikan sub-agent per grup dengan daftar sitasi masing-masing
-
-Contoh untuk topik PPCM + HFrEF maternal, mapping pertanyaan nyata adalah:
-
-| Level | Grup | Q | Section |
-|-------|------|---|---------|
-| ## | definisi-epidemiologi | 1-9 | 2.1 PPCM dan HFrEF pada Kehamilan |
-| ### | definisi | 1-5 | 2.1.1 Definisi, Kriteria Diagnostik, Diagnosis Banding |
-| ### | epidemiologi | 6-9 | 2.1.2 Klasifikasi Risiko & Epidemiologi |
-...dan seterusnya
 
 ### Step 5: Cek Output Sub-Agent
 
