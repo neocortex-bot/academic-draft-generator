@@ -3,12 +3,12 @@ name: academic-draft-generator
 version: 1.6.0
 description: |-
   Generate academic literature review drafts (Bahasa Indonesia) from
-  PaperQA/HyDE research Q&A CSV data. Mapping pertanyaan ke outline,
+  research Q&A data (CSV). Mapping pertanyaan ke outline generik,
   parallel section generation via sub-agents with strict anti-AI style,
   post-processing polish via paper-humanizer-id, Bab 1-3 generation,
-  audience-tailored compaction, incremental PDF update, kompilasi ke
-  DOCX/PDF via python-docx/weasyprint.
-tags: [academic, literature-review, draft-generation, bahasa-indonesia, paperqa, anti-ai, bab-1]
+  audience-tailored compaction, kompilasi ke DOCX/PDF via python-docx
+  or weasyprint. General purpose — works for any scientific/medical topic.
+tags: [academic, literature-review, draft-generation, bahasa-indonesia, general-purpose, anti-ai]
 related_skills:
   - paper-humanizer-id
   - humanize-writing
@@ -207,34 +207,51 @@ Setelah draft selesai, skoring untuk deteksi AI residual. Jika 5+ dari checklist
 
 Gunakan `delegate_task(tasks=[...])` dengan max 3 concurrent tasks.
 
-**Kelompok seksi (sesuai outline):**
+**Pola outline umum (template — sesuaikan dengan topik):**
+
+Pola di bawah ini adalah template generik yang bisa dipakai untuk topik ilmiah apa pun. Mapping Q → section dilakukan manual berdasarkan isi pertanyaan.
+
+```
+## 2.1 Definisi dan Klasifikasi Topik
+  ### 2.1.1 Definisi, Kriteria Diagnostik, Diagnosis Banding
+  ### 2.1.2 Epidemiologi, Klasifikasi Risiko, dan Faktor Terkait
+## 2.2 Landasan Fisiologis/Mekanistik
+  ### 2.2.1 Perubahan Fisiologis Dasar dan Implikasinya
+## 2.3 Paradigma Terapi Standar (Populasi Umum)
+## 2.4 Dekonstruksi/Tantangan pada Populasi Khusus
+  ### 2.4.1 Kontraindikasi & Konsekuensi
+  ### 2.4.2 Evidence Gaps & Trade-off
+  ### 2.4.3 Agen/Faktor yang Bertahan — Reposisi Peran
+  ### 2.4.4 Alternatif Substitusi
+## 2.5 Strategi Substitusi Sekuensial / Alur Tata Laksana
+  ### 2.5.1 Fase Pra-Intervensi / Persiapan
+  ### 2.5.2 Fase Intervensi Awal
+  ### 2.5.3 Fase Transisi & Follow-up
+  ### 2.5.4 Fase Reintroduksi / Pemulihan
+## 2.6 Navigasi Evidence Gaps
+  ### 2.6.1 Keterbatasan Bukti & Bias Studi
+  ### 2.6.2 Extrapolasi Data & Real-World Evidence
+  ### 2.6.3 Individualized Care & Shared Decision-Making
+## 2.7 Terapi/Topik Adjuvan Kritis (ringkas)
+  ### 2.7.1 Profilaksis / Pencegahan
+  ### 2.7.2 Terapi Spesifik Berdasarkan Patofisiologi
+  ### 2.7.3 Device / Dukungan Eksternal
+```
+
+**Cara mapping Q&A ke outline:**
+1. Baca daftar pertanyaan di CSV
+2. Kelompokkan secara manual per section outline berdasarkan kesesuaian topik
+3. Ekstrak closed-set sitasi per grup
+4. Delegasikan sub-agent per grup dengan daftar sitasi masing-masing
+
+Contoh untuk topik PPCM + HFrEF maternal, mapping pertanyaan nyata adalah:
 
 | Level | Grup | Q | Section |
 |-------|------|---|---------|
 | ## | definisi-epidemiologi | 1-9 | 2.1 PPCM dan HFrEF pada Kehamilan |
 | ### | definisi | 1-5 | 2.1.1 Definisi, Kriteria Diagnostik, Diagnosis Banding |
-| ### | epidemiologi | 6-9 | 2.1.2 Klasifikasi Risiko & Epidemiologi (singkat) |
-| ## | hemodinamik | 10-14 | 2.2 Adaptasi Kardiovaskular Kehamilan |
-| ### | hemodinamik | 10-14 | 2.2.1 Perubahan Hemodinamik & Farmakokinetik |
-| ## | gdmt | 15-20 | 2.3 Paradigma Four Pillars GDMT (non-hamil) |
-| ## | dekonstruksi | 21-36 | 2.4 Dekonstruksi Four Pillars pada Kehamilan |
-| ### | raas | 21-24 | 2.4.1 RAAS/ARNI: Kontraindikasi & Konsekuensi |
-| ### | mra_sglt2 | 25-28 | 2.4.2 MRA & SGLT2i: Evidence Gaps & Trade-off |
-| ### | beta_blocker | 29-32 | 2.4.3 Beta-Blocker: Reposisi sebagai Pilar Utama |
-| ### | hydralazine | 33-36 | 2.4.4 Hydralazine–ISDN sebagai Substitusi |
-| ## | sekuensial | 37-54 | 2.5 Strategi Substitusi Sekuensial |
-| ### | prekonsepsi | 37-40 | 2.5.1 Fase Pra-Konsepsi |
-| ### | kehamilan | 41-46 | 2.5.2 Fase Kehamilan (Trimester 1–3) |
-| ### | persalinan | 47-52 | 2.5.3 Fase Persalinan & Immediate Postpartum |
-| ### | laktasi | 53-54 | 2.5.4 Fase Laktasi & Reintroduksi Four Pillars |
-| ## | evidence-gaps | 68-84 | 2.6 Navigasi Evidence Gaps |
-| ### | bias | 68,69,73,74,77,78,79 | 2.6.1 Keterbatasan Bukti & Bias Studi |
-| ### | realworld | 70,71,72,76 | 2.6.2 Extrapolasi & Real-World Data |
-| ### | shared | 80,81,82,83,84 | 2.6.3 Individualized Care & Shared Decision-Making |
-| ## | adjuvan | 55-67 | 2.7 Terapi Adjuvan Kritis (ringkas) |
-| ### | antikoagulasi | 60-63 | 2.7.1 Antikoagulasi (LVEF ≤30%) |
-| ### | bromocriptine | 55-59 | 2.7.2 Bromocriptine |
-| ### | device | 64-67 | 2.7.3 Device & MCS (sangat singkat) |
+| ### | epidemiologi | 6-9 | 2.1.2 Klasifikasi Risiko & Epidemiologi |
+...dan seterusnya
 
 ### Step 5: Cek Output Sub-Agent
 
