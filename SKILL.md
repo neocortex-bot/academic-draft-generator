@@ -1,12 +1,13 @@
 ---
 name: academic-draft-generator
-version: 1.3.0
+version: 1.6.0
 description: |-
   Generate academic literature review drafts (Bahasa Indonesia) from
   PaperQA/HyDE research Q&A CSV data. Mapping pertanyaan ke outline,
   parallel section generation via sub-agents with strict anti-AI style,
-  post-processing polish via paper-humanizer-id, Bab 1 pendahuluan naratif,
-  kompilasi ke PDF via weasyprint.
+  post-processing polish via paper-humanizer-id, Bab 1-3 generation,
+  audience-tailored compaction, incremental PDF update, kompilasi ke
+  DOCX/PDF via python-docx/weasyprint.
 tags: [academic, literature-review, draft-generation, bahasa-indonesia, paperqa, anti-ai, bab-1]
 related_skills:
   - paper-humanizer-id
@@ -60,9 +61,12 @@ Pipeline ini mengintegrasikan dua skill anti-AI yang saling melengkapi:
 3. Delegate parallel sub-agent per seksi (max 3 concurrent)
 4. Tulis section yang missed secara lokal
 5. Verifikasi sitasi — rewrite ulang yg 0 cites
-6. Compile semua .md Bab 2 → generate Bab 1 (naratif 5 paragraf)
-7. Gabung Bab 1 + Bab 2 → verifikasi final → weasyprint PDF
-8. Kirim file ke user
+6. Compile Bab 2 → generate Bab 1 (naratif 5 paragraf dengan sitasi dari Bab 2)
+7. Generate Bab 3 (3 paragraf compact tanpa sitasi)
+8. Opsional: compact Bab 2 untuk target audience (potong elaborasi molekuler)
+9. Gabung Bab 1 + Bab 2 + Bab 3 → kompilasi DOCX dan/atau PDF
+10. Verifikasi heading setiap section cocok persis dengan outline
+11. Kirim file ke user
 ```
 
 ## Step-by-Step
@@ -203,28 +207,34 @@ Setelah draft selesai, skoring untuk deteksi AI residual. Jika 5+ dari checklist
 
 Gunakan `delegate_task(tasks=[...])` dengan max 3 concurrent tasks.
 
-**Kelompok seksi:**
+**Kelompok seksi (sesuai outline):**
 
-| Grup | Q | Section |
-|------|---|---------|
-| definisi | 1-5 | 2.1.1 Definisi, kriteria diagnostik, DD |
-| epidemiologi | 6-9 | 2.1.2 Klasifikasi risiko & epidemiologi |
-| hemodinamik | 10-14 | 2.2.1 Perubahan hemodinamik & farmakokinetik |
-| gdmt | 15-20 | 2.3 Four pillars GDMT non-hamil |
-| raas | 21-24 | 2.4.1 RAAS/ARNI kontraindikasi |
-| mra_sglt2 | 25-28 | 2.4.2 MRA & SGLT2i |
-| beta_blocker | 29-32 | 2.4.3 Beta-blocker pilar utama |
-| hydralazine | 33-36 | 2.4.4 Hydralazine-ISDN substitusi |
-| prekonsepsi | 37-40 | 2.5.1 Fase pra-konsepsi |
-| kehamilan | 41-46 | 2.5.2 Fase kehamilan trimester 1-3 |
-| persalinan | 47-52 | 2.5.3 Fase persalinan & immediate postpartum |
-| laktasi | 53-54 | 2.5.4 Fase laktasi & reintroduksi |
-| bias | 68,69,73,74,77,78,79 | 2.6.1 Keterbatasan bukti & bias |
-| realworld | 70,71,72,76 | 2.6.2 Extrapolasi & real-world data |
-| shared | 80,81,82,83,84 | 2.6.3 Individualized care & SDM |
-| antikoagulasi | 60-63 | 2.7.1 Antikoagulasi LVEF ≤30% |
-| bromocriptine | 55-59 | 2.7.2 Bromocriptine pada PPCM |
-| device | 64-67 | 2.7.3 Device & MCS |
+| Level | Grup | Q | Section |
+|-------|------|---|---------|
+| ## | definisi-epidemiologi | 1-9 | 2.1 PPCM dan HFrEF pada Kehamilan |
+| ### | definisi | 1-5 | 2.1.1 Definisi, Kriteria Diagnostik, Diagnosis Banding |
+| ### | epidemiologi | 6-9 | 2.1.2 Klasifikasi Risiko & Epidemiologi (singkat) |
+| ## | hemodinamik | 10-14 | 2.2 Adaptasi Kardiovaskular Kehamilan |
+| ### | hemodinamik | 10-14 | 2.2.1 Perubahan Hemodinamik & Farmakokinetik |
+| ## | gdmt | 15-20 | 2.3 Paradigma Four Pillars GDMT (non-hamil) |
+| ## | dekonstruksi | 21-36 | 2.4 Dekonstruksi Four Pillars pada Kehamilan |
+| ### | raas | 21-24 | 2.4.1 RAAS/ARNI: Kontraindikasi & Konsekuensi |
+| ### | mra_sglt2 | 25-28 | 2.4.2 MRA & SGLT2i: Evidence Gaps & Trade-off |
+| ### | beta_blocker | 29-32 | 2.4.3 Beta-Blocker: Reposisi sebagai Pilar Utama |
+| ### | hydralazine | 33-36 | 2.4.4 Hydralazine–ISDN sebagai Substitusi |
+| ## | sekuensial | 37-54 | 2.5 Strategi Substitusi Sekuensial |
+| ### | prekonsepsi | 37-40 | 2.5.1 Fase Pra-Konsepsi |
+| ### | kehamilan | 41-46 | 2.5.2 Fase Kehamilan (Trimester 1–3) |
+| ### | persalinan | 47-52 | 2.5.3 Fase Persalinan & Immediate Postpartum |
+| ### | laktasi | 53-54 | 2.5.4 Fase Laktasi & Reintroduksi Four Pillars |
+| ## | evidence-gaps | 68-84 | 2.6 Navigasi Evidence Gaps |
+| ### | bias | 68,69,73,74,77,78,79 | 2.6.1 Keterbatasan Bukti & Bias Studi |
+| ### | realworld | 70,71,72,76 | 2.6.2 Extrapolasi & Real-World Data |
+| ### | shared | 80,81,82,83,84 | 2.6.3 Individualized Care & Shared Decision-Making |
+| ## | adjuvan | 55-67 | 2.7 Terapi Adjuvan Kritis (ringkas) |
+| ### | antikoagulasi | 60-63 | 2.7.1 Antikoagulasi (LVEF ≤30%) |
+| ### | bromocriptine | 55-59 | 2.7.2 Bromocriptine |
+| ### | device | 64-67 | 2.7.3 Device & MCS (sangat singkat) |
 
 ### Step 5: Cek Output Sub-Agent
 
@@ -384,6 +394,10 @@ Setiap paragraf secara implisit mewakili satu pilar, tanpa menyebut 'pertama', '
 ## Referensi Terkait
 
 - [Citation Retrofit Workflow](references/citation-retrofit-workflow.md) — Workflow lengkap untuk rewrite semua section dengan closed-set sitasi setelah user komplain sitasi hilang.
+- [Incremental PDF Update](references/incremental-pdf-update.md) — Cara menambahkan PDF baru ke embedding index yang sudah ada, query perubahan, dan patch draft — tanpa re-run semua pertanyaan.
+- [Prompt Bab 1](references/prompt-bab-1.md) — Template prompt lengkap untuk generate Bab 1 Pendahuluan 5 paragraf naratif.
+- [Prompt Bab 3](references/prompt-bab-3.md) — Template prompt lengkap untuk generate Bab 3 Kesimpulan 3 paragraf compact.
+- [Combine to PDF](scripts/combine-to-pdf.py) — Script Python untuk menggabungkan semua file section markdown + Bab 1 + Bab 3 dan mengonversi ke PDF via weasyprint.
 
 ## Pitfalls
 
@@ -400,3 +414,11 @@ Setiap paragraf secara implisit mewakili satu pilar, tanpa menyebut 'pertama', '
 11. **"Setiap paragraf diakhiri sitasi" constraint.** Beberapa sub-agent menulis paragraf tanpa sitasi sama sekali meskipun data diberikan. Solusi: Step 1b (pre-ekstraksi) + Step 5b (verifikasi) + iterasi rewrite. Jangan lanjut ke PDF sebelum verifikasi lolos.
 12. **Batch rewrite citation.** Jika 12+ section perlu di-rewrite untuk sitasi, lakukan dalam batch 3 concurrent. Setelah tiap batch, verifikasi dengan `grep -c 'pages' each_file.md`. File yang masih 0 cites → rewrite ulang dengan instruksi lebih ketat.
 13. **Sub-agent tidak menulis file saat rewrite.** Saat rewrite section, sub-agent kadang mengembalikan teks di summary tapi tidak menyimpan file. Cek filesystem setelah tiap batch. Jika tidak ada file baru, ambil teks dari summary dan tulis manual.
+
+14. **Section headings MUST match outline exactly.** Jangan merge heading names atau pakai range seperti "2.4.1–2.4.2". Setiap subsection dari outline mendapat heading sendiri dengan nomor DAN judul persis dari outline. Jika outline menulis "### 2.4.1 RAAS/ARNI: Kontraindikasi & Konsekuensi", heading di draft harus sama persis — bukan "RAAS inhibitor pada kehamilan".
+
+15. **Target audience menentukan densitas konten.** Untuk general cardiologist: fokus pada implikasi klinis, angka kunci, terapi, dan evidence gaps. Potong elaborasi molekuler, detail teknis ekokardiografi, sejarah definisi. Jika user minta "compact" atau "kurangi 50%", target Bab 2 ~3.000-4.000 kata dengan tetap mempertahankan sitasi pada setiap paragraf.
+
+16. **DOCX output mungkin lebih diinginkan daripada PDF.** `pip install python-docx` untuk konversi. Format: Times New Roman 12pt, spasi 1.5, justify, first-line indent 1.27cm. Heading levels: # = Heading 1 (14pt), ## = Heading 2 (13pt), ### = Heading 3 (12pt).
+
+17. **Guideline update (ESC 2018 → 2025).** Jika user memberikan PDF pedoman baru: (a) copy ke folder pdf/ — `get_docs_async()` akan append-only embed. (b) JANGAN re-run semua pertanyaan. Cukup 3-5 targeted queries: "Apa perbedaan [guideline baru] vs [guideline lama]?" (c) Patch hanya section yang berubah signifikan. Jika hanya tahun berubah, update sitasi saja. Jika ada perubahan rekomendasi (dosis, kelas, indikasi), rewrite paragraph terkait. (d) Jangan rewrite section yang tidak berubah isinya.
