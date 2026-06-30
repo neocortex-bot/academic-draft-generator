@@ -1,13 +1,13 @@
 ---
 name: academic-draft-generator
-version: 1.1.0
+version: 1.3.0
 description: |-
   Generate academic literature review drafts (Bahasa Indonesia) from
   PaperQA/HyDE research Q&A CSV data. Mapping pertanyaan ke outline,
   parallel section generation via sub-agents with strict anti-AI style,
-  post-processing polish via paper-humanizer-id, kompilasi ke PDF via
-  weasyprint.
-tags: [academic, literature-review, draft-generation, bahasa-indonesia, paperqa, anti-ai]
+  post-processing polish via paper-humanizer-id, Bab 1 pendahuluan naratif,
+  kompilasi ke PDF via weasyprint.
+tags: [academic, literature-review, draft-generation, bahasa-indonesia, paperqa, anti-ai, bab-1]
 related_skills:
   - paper-humanizer-id
   - humanize-writing
@@ -23,6 +23,18 @@ Gunakan ketika user memiliki:
 3. **Prompt template** — aturan Academic Draft Helper (gaya anti-AI, format prosa)
 
 Dan user meminta output berupa **draft lengkap dalam Bahasa Indonesia** sebagai PDF.
+
+### Target Volume: 20-30 Halaman A4
+
+Target 20-30 halaman A4 (~400-500 kata per halaman dengan font 12pt, spasi 1.5, margin 2.5cm) berarti total **10.000-15.000 kata**. Distribusi:
+
+| Tingkat | Jumlah | Kata per item | Subtotal |
+|---------|--------|---------------|----------|
+| Section utama (2.1, 2.2...) | ~7 | 800-1200 | 5.600-8.400 |
+| Sub-section (2.1.1, 2.1.2...) | ~11 | 400-700 | 4.400-7.700 |
+| **Total** | **18** | | **10.000-16.000** |
+
+Gunakan ini sebagai panduan saat menentukan target word count per sub-agent.
 
 ## Integrasi Skill Terkait
 
@@ -44,11 +56,13 @@ Pipeline ini mengintegrasikan dua skill anti-AI yang saling melengkapi:
 
 ```
 1. Baca outline → mapping pertanyaan → seksi
-2. Ekstrak Q&A per seksi → simpan sebagai /tmp/qa_{group}.json
+2. Ekstrak Q&A per seksi & closed-set sitasi
 3. Delegate parallel sub-agent per seksi (max 3 concurrent)
-4. Tulis section 2.4.1 dan seksi yang missed secara lokal
-5. Compile semua .md → satu markdown → weasyprint PDF
-6. Kirim file ke user
+4. Tulis section yang missed secara lokal
+5. Verifikasi sitasi — rewrite ulang yg 0 cites
+6. Compile semua .md Bab 2 → generate Bab 1 (naratif 5 paragraf)
+7. Gabung Bab 1 + Bab 2 → verifikasi final → weasyprint PDF
+8. Kirim file ke user
 ```
 
 ## Step-by-Step
@@ -66,11 +80,59 @@ Baca `outline.txt` untuk mapping. Baca CSV untuk daftar pertanyaan.
 
 Simpan tiap grup Q&A sebagai `/tmp/qa_{group_name}.json` untuk di-load sub-agent.
 
-### Step 2: Prompt Sub-Agent
+### Step 1b: Pre-ekstraksi Sitasi dari CSV (WAJIB — cegah sub-agent menulis tanpa sitasi)
+
+Sebelum delegasi ke sub-agent, EKSTRAK SEMUA sitasi dari CSV asli dan mapping per grup section. Ini adalah langkah KRITIS karena sub-agent sering menulis paragraf tanpa sitasi sama sekali jika tidak diberikan data sitasi sebagai closed set.
+
+```python
+import re, json
+
+with open('research_answers_deepseek_clean.csv', 'r') as f:
+    text = f.read()
+
+# Ekstrak semua (AuthorYear pages X-Y) dari seluruh CSV
+all_citations = re.findall(r'[A-Z][a-zA-Z]+\d{4}[a-z]?\s+pages\s+\d+-\d+', text)
+
+# Mapping per grup section
+groups = {
+    'definisi': ['1','2','3','4','5'],
+    'epidemiologi': ['6','7','8','9'],
+    # ... semua grup
+}
+
+for gname, qnums in groups.items():
+    group_citations = set()
+    for qn in qnums:
+        if qn in qa_data:
+            group_citations.update(extract_cites(qa_data[qn]))
+    with open(f'/tmp/qa_cites_{gname}.json', 'w') as f:
+        json.dump(sorted(group_citations), f)
+```
+
+**Output:** `/tmp/qa_cites_{group}.json` berisi daftar closed-set sitasi yang valid untuk section tersebut. Sub-agent HARUS hanya menggunakan sitasi dari file ini — TIDAK BOLEH menambahkan sitasi lain.
+
+**Kasus khusus:** Jika CSV tidak mengandung `pages X-Y` untuk grup tertentu (contoh Q6-Q9 epidemiologi = 0 citations), ambil sitasi dari pertanyaan Q&A lain yang relevan, atau dari outline itu sendiri. Jangan panggil sub-agent tanpa data sitasi — tulis manual.
+
+### Step 2: Prompt Sub-Agent — Wajib Sertakan Closed-Set Sitasi
 
 Tiap sub-agent menerima:
-- `context`: path file JSON + ringkasan isi Q&A + target section + strict style rules
-- `goal`: instruksi eksplisit "Tulis bagian X.Y.Z dalam Bahasa Indonesia sebagai prosa akademik mengalir. Minimal N kata. TANPA bullet, TANPA bold, TANPA kata AI klise, TANPA paralelisme negatif, TANPA trailing -ing, TANPA kesimpulan formulaik. Kopula dasar. Sitasi wajib."
+
+- `context`: path file JSON Q&A + **path file JSON sitasi** (dari Step 1b) + ringkasan isi Q&A + target section + strict style rules
+- `goal`: instruksi eksplisit dengan format berikut. **WAJIB** cantumkan daftar sitasi sebagai closed set:
+
+```
+Tulis bagian X.Y.Z dalam Bahasa Indonesia sebagai prosa akademik mengalir.
+
+KRITERIA WAJIB:
+1. SETIAP paragraf (100%) harus diakhiri minimal SATU sitasi dalam format persis: (AuthorYear pages X-Y)
+2. HANYA gunakan sitasi dari daftar berikut — JANGAN buat sitasi baru:
+   [list semua sitasi untuk grup ini]
+3. Panjang: 500-700 kata
+4. TANPA bullet, TANPA bold, TANPA kata AI klise, TANPA paralelisme negatif, TANPA trailing -ing, TANPA kesimpulan formulaik
+5. Kopula dasar (adalah, merupakan). Sitasi wajib dipertahankan format asli.
+```
+
+**PENTING:** Jika data sitasi kosong (0 citations untuk grup ini), jangan panggil sub-agent. Tulis section manual berdasarkan konteks outline dan pengetahuan umum, dengan sitasi yang diambil dari sumber terdekat yang tersedia.
 
 ### Step 3: Style Rules (Wajib)
 
@@ -173,6 +235,31 @@ ls -la /home/linuxmint/{bab_,bagian_,seksi_}* 2>/dev/null
 
 Jika ada seksi yang tidak ditulis file (sub-agent hanya output di summary), tulis manual berdasarkan data Q&A.
 
+### Step 5b: Verifikasi Sitasi — Setiap Paragraf Wajib Punya Sitasi
+
+Setelah semua seksi terkumpul, jalankan verifikasi sitasi DARI SETIAP FILE sebelum kompilasi:
+
+```python
+import re
+for fname in all_section_files:
+    content = open(fname).read()
+    paras = [p.strip() for p in content.split('\\n\\n') 
+             if len(p.strip()) > 100 and not p.startswith('#')]
+    no_cite = []
+    for i, p in enumerate(paras):
+        if not re.search(r'pages \d', p):
+            no_cite.append(i+1)
+    if no_cite:
+        print(f'{fname}: {len(no_cite)}/{len(paras)} paras TANPA sitasi → {no_cite}')
+```
+
+**Tindakan jika ditemukan paragraf tanpa sitasi:**
+1. Catat nomor paragraf dan section
+2. Delegasikan ulang section tersebut dengan instruksi LEBIH ketat: "TULIS ULANG. SETIAP paragraf HARUS diakhiri (AuthorYear pages X-Y). Hanya dari daftar: [closed set]"
+3. Verifikasi ulang setelah selesai
+
+**Jangan lanjut ke kompilasi PDF** sebelum semua section memiliki 100% paragraf bersitasi.
+
 ### Step 6: Compile & PDF
 
 ```python
@@ -223,6 +310,59 @@ Sebelum konversi ke PDF, jalankan Detection Heuristic (lihat Extended AI Vocabul
 
 Kirim file PDF via `MEDIA:/path/to/draft.pdf` di response.
 
+### Step 8: Generate Bab 1 (Pendahuluan) — 5 Paragraf Naratif
+
+Setelah Bab 2 selesai, generate Bab 1 sebagai pendahuluan yang **memperkenalkan masalah penelitian dengan menjadikan isi Bab 2 sebagai landasan argumen**.
+
+**Struktur 5 Paragraf (TANPA sub-judul — teks mengalir bersambung):**
+
+| Paragraf | Fungsi | Teknik Menulis |
+|----------|--------|----------------|
+| 1 | Hook — konteks umum topik | Mulai dengan pernyataan menarik tentang topik Bab 2. Tunjukkan relevansi. Ciptakan "kail" pembaca. |
+| 2 | Penghubung — mengerucut ke masalah | Gunakan konsep kunci Bab 2 untuk tunjukkan area kompleks/problematic. Transisi ke spesifik. |
+| 3 | Research gap — inti argumen | Tunjukkan secara eksplisit kesenjangan riset, perdebatan belum tuntas, masalah praktis belum terjawab. Jelaskan signifikansi gap. |
+| 4 | Tujuan penelitian | Jawaban langsung atas gap. Kalimat jangkar: "Oleh karena itu, studi ini bertujuan untuk..." |
+| 5 | Penutup — kontribusi & peta jalan | Kontribusi/manfaat studi. Peta jalan ke Bab 2 sebagai 'teaser'. |
+
+**Teknik Penulisan:**
+
+- **Argumentatif, bukan deskriptif**: Gunakan materi Bab 2 untuk membangun argumen _mengapa_ tinjauan ini penting — jangan hanya mendeskripsikan isi Bab 2.
+- **Ambil sitasi dari Bab 2**: Setiap klaim faktual harus didukung sitasi yang sama dengan yang digunakan di Bab 2. Buka file Bab 2 dan kutip referensi yang relevan.
+- **Alur logis**: Tiap paragraf membangun argumen dari paragraf sebelumnya. Paragraf 1 → 2 → 3 (gap) → 4 (tujuan) → 5 (roadmap).
+- **Jangan gunakan sitasi di paragraf 5** (peta jalan ke Bab 2 tidak perlu sitasi).
+- **5-7 paragraf** total. Idealnya 5 paragraf, maksimal 7.
+- **Panjang: 800-1.200 kata**.
+
+**Prompt template untuk sub-agent (jika didelegasikan):**
+
+```
+Anda adalah asisten penulis akademik. Buatkan Bab 1 (Pendahuluan) untuk telaah pustaka tentang [TOPIC].
+
+Baca file Bab 2 di /home/linuxmint/draft_aulia_revisi.md sebagai sumber konten.
+
+KRITERIA:
+1. 5-7 paragraf naratif TANPA sub-judul (jangan gunakan "Latar Belakang", "Rumusan Masalah", dll)
+2. Struktur: hook (umum) → penghubung (spesifik) → research gap → tujuan → kontribusi & roadmap
+3. Argumentatif — gunakan Bab 2 untuk bangun argumen MENGAPA tinjauan penting, bukan deskripsi isi Bab 2
+4. Setiap paragraf fakta WAJIB diakhiri sitasi format (AuthorYear pages X-Y) — ambil dari Bab 2
+5. Paragraf penutup (roadmap) TANPA sitasi
+6. TANPA bullet, TANPA bold, TANPA AI klise, TANPA kesimpulan formulaik
+7. Panjang: 800-1.200 kata Bahasa Indonesia prosa mengalir
+```
+
+**Setelah selesai:** Gabungkan Bab 1 + Bab 2 → kompilasi ulang PDF.
+
+### Step 9: Compile Final PDF (Bab 1 + Bab 2)
+
+```
+files = ["bab_1_pendahuluan.md"] + bab2_files
+# Combine, remove --- separators, convert to PDF
+```
+
+## Referensi Terkait
+
+- [Citation Retrofit Workflow](references/citation-retrofit-workflow.md) — Workflow lengkap untuk rewrite semua section dengan closed-set sitasi setelah user komplain sitasi hilang.
+
 ## Pitfalls
 
 1. **Sub-agent tidak menulis file** — beberapa sub-agent hanya mengembalikan summary dengan teks embedded, bukan menulis file. Selalu cek filesystem setelah tiap batch. Tulis manual jika perlu.
@@ -233,3 +373,8 @@ Kirim file PDF via `MEDIA:/path/to/draft.pdf` di response.
 6. **Word count** — sub-agent sering melebihi target. It's fine; lebih baik kelebihan daripada kurang.
 7. **Nama file inkonsisten** — sub-agent punya kebiasaan naming sendiri. Selalu ls setelah batch untuk tahu path aktual.
 8. **Batch size** — max 3 concurrent tasks via delegate_task. Loop dalam batch of 3.
+9. **Sitasi tidak tersedia di data Q&A** — jika pertanyaan di outline tidak memiliki jawaban di CSV, section tersebut HARUS ditulis manual berdasarkan konteks outline dan pengetahuan umum. Jangan panggil sub-agent untuk pertanyaan tanpa data.
+10. **Rewrite scenario: citation page-range mismatch.** Sub-agent sering mengubah format sitasi dari `(AuthorYear pages X-Y)` menjadi `(Author et al., tahun)` atau format bebas. Jika ini terjadi, rewrite dengan closed-set eksplisit: "GUNAKAN PERSIS format sitasi dari daftar ini". Lihat [Citation Retrofit Workflow](references/citation-retrofit-workflow.md).
+11. **"Setiap paragraf diakhiri sitasi" constraint.** Beberapa sub-agent menulis paragraf tanpa sitasi sama sekali meskipun data diberikan. Solusi: Step 1b (pre-ekstraksi) + Step 5b (verifikasi) + iterasi rewrite. Jangan lanjut ke PDF sebelum verifikasi lolos.
+12. **Batch rewrite citation.** Jika 12+ section perlu di-rewrite untuk sitasi, lakukan dalam batch 3 concurrent. Setelah tiap batch, verifikasi dengan `grep -c 'pages' each_file.md`. File yang masih 0 cites → rewrite ulang dengan instruksi lebih ketat.
+13. **Sub-agent tidak menulis file saat rewrite.** Saat rewrite section, sub-agent kadang mengembalikan teks di summary tapi tidak menyimpan file. Cek filesystem setelah tiap batch. Jika tidak ada file baru, ambil teks dari summary dan tulis manual.
